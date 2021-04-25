@@ -1,0 +1,251 @@
+#+title: Von Serverless / CloudFormation zu CDK migrieren
+#+author: Marcel Patzwahl
+
+* Was ist das CDK
+  - Open Source Framework von AWS zum bauen von Infrastructure as Code (IaC)
+  - Definitionen in General Purpose Programmiersprachen
+  - Wird nach CloudFormation übersetzt und als Stacks deployed
+* MOIAs Weg zu CDK
+  
+  #+ATTR_ORG: :width 1000
+  [[file:img/community_day2019.jpg]]
+  
+* Bestehende CloudFormation Projekte nach CDK umziehen
+** Stand früher
+   - [[https://docs.aws.amazon.com/cdk/api/latest/docs/@aws-cdk_core.CfnInclude.html][CfnInclude]] Klasse in ~@aws-cdk/core~
+ 
+    Konnte bereits CloudFormation Templates importieren
+    Keinerlei Interaktion mit dem importierten Stack
+   
+   #+BEGIN_SRC typescript
+     import * as cdk from '@aws-cdk/core';
+     import { CfnInclude } from '@aws-cdk/core';
+
+     export class CdkInfraStack extends cdk.Stack {
+       constructor(scope: cdk.Construct, id: string, props?: cdk.StackProps) {
+         super(scope, id, props);
+
+         const cfnTemplate = new CfnInclude(this, 'Template', {
+           templateFile: 'resources/template.json',
+         });
+       }
+     }
+   #+END_SRC
+   
+** Stand jetzt
+   - [[https://docs.aws.amazon.com/cdk/api/latest/docs/cloudformation-include-readme.html][CfnInclude]] Klasse in ~@aws-cdk/cloudformation-include~
+
+    Kann auch mit dem Stack interagieren
+   - ~getResource(logicalId)~
+   - ~getCondition(conditionName)~
+   - ~getHook(hookLogicalId)~
+   - ~getMapping(mappingName)~
+   - ~getNestedStack(logicalId)~
+   - ~getOutput(outputId)~
+   - ~getParameter(parameterName)~
+   - ~getRule(ruleName)~
+** Beispiel ~getResource()~
+   
+   #+BEGIN_SRC yaml
+       Resources:
+         Bucket:
+           Type: AWS::S3::Bucket
+           Properties:
+             BucketName: some-bucket-name
+   #+END_SRC
+   
+   #+BEGIN_SRC typescript
+     import * as cdk from '@aws-cdk/core';
+     import { CfnInclude } from '@aws-cdk/cloudformation-include';
+     import { CfnBucket } from '@aws-cdk/aws-s3';
+
+     export class CdkInfraStack extends cdk.Stack {
+       constructor(scope: cdk.Construct, id: string, props?: cdk.StackProps) {
+         super(scope, id, props);
+
+         const cfnTemplate = new CfnInclude(this, 'Template', {
+           templateFile: 'resources/template.yaml',
+         });
+
+         const cfnBucket = cfnTemplate.getResource('Bucket') as CfnBucket;
+       }
+     }
+   #+END_SRC
+   
+* Fallbeispiel: Migration von Serverless zu CDK
+** Ausgangssituation
+   - [[https://www.serverless.com/examples/aws-node-rest-api-with-dynamodb][Rest API with DynamoDB]]
+     - API Gateway
+     - 5 Lambdas (CRUD)
+   - Keine ~iamRoleStatements~ um in DynamoDB zu schreiben
+   - DynamoDB Name ist den Lambdas nicht bekannt
+   - [[file:aws-node-rest-api-with-dynamodb-serverless/serverless.yml][serverless.yaml]]
+     
+*** Serverless Projekt anlegen
+    #+BEGIN_SRC shell
+      cd aws-node-rest-api-with-dynamodb-serverless && \
+          serverless deploy
+    #+END_SRC
+
+*** Call an create Schnittstelle
+    #+BEGIN_SRC lang
+   curl -XPOST -d '{"text": "My first Todo"}' \
+    #+END_SRC
+   
+** Das bestehende Projekt mit CDK deployen
+*** Ein neues CDK Projekt anlegen
+    #+BEGIN_SRC shell
+      cd .. && \
+          mkdir aws-node-rest-api-with-dynamodb-cdk && \
+          cd aws-node-rest-api-with-dynamodb-cdk && \
+          cdk init app --language=typescript
+    #+END_SRC
+    
+*** ~cloudformation-include~ installieren
+    #+BEGIN_SRC lang
+   npm install @aws-cdk/cloudformation-include
+    #+END_SRC
+
+*** ~CfnInclude~ instanziieren
+    - [[file:aws-node-rest-api-with-dynamodb-cdk/lib/aws-node-rest-api-with-dynamodb-cdk-stack.ts]]
+
+*** Bestehendes CloudFormation Template speichern
+
+    #+BEGIN_SRC shell
+      mkdir -p resources && \
+          touch resources/template.json
+    #+END_SRC
+    
+*** Stackname in CDK auf bestehenden Stacknamen ändern
+    
+   [[file:aws-node-rest-api-with-dynamodb-cdk/bin/aws-node-rest-api-with-dynamodb-cdk.ts]] 
+    
+*** Diff anzeigen und deployen
+
+    #+BEGIN_SRC shell
+    cdk diff
+    #+END_SRC
+
+    #+BEGIN_SRC shell
+    cdk deploy
+    #+END_SRC
+
+** Bestehende CloudFormation Resourcen erweitern
+*** CRUD Lambdas mit ~DYNAMO_TABLE~ Environment Variable ausstatten
+**** CDK Module für DynamoDB und Lambda installieren
+     #+BEGIN_SRC sh
+     npm install @aws-cdk/aws-dynamodb @aws-cdk/aws-lambda
+     #+END_SRC
+     
+**** DynamoDB Table in CDK bringen und Namen extrahieren
+     #+BEGIN_SRC typescript
+       const cfnTable = cfnTemplate.getResource('TodosDynamoDbTable') as CfnTable;
+
+       if (cfnTable.tableName == null) {
+         throw new Error("DynamoDB has no name");
+       }
+
+       const dynamoDbTableName: string = cfnTable.tableName;
+    #+END_SRC
+    
+    [[file:aws-node-rest-api-with-dynamodb-cdk/lib/aws-node-rest-api-with-dynamodb-cdk-stack.ts]]
+
+**** Lambda Functions in CDK bringen und ~DYNAMODB_TABLE~ Environment Variable setzen
+     #+BEGIN_SRC typescript
+       readonly lambdaLogicalNames = [
+         'CreateLambdaFunction',
+         'DeleteLambdaFunction',
+         'GetLambdaFunction',
+         'UpdateLambdaFunction',
+         'ListLambdaFunction',
+       ];
+     #+END_SRC
+    
+     #+BEGIN_SRC typescript
+       const cfnFunctions = this.lambdaLogicalNames.map(
+         (logicalName) => cfnTemplate.getResource(logicalName) as CfnFunction
+       );
+
+       cfnFunctions.forEach((f) => f.environment = {
+         variables: {
+           'DYNAMODB_TABLE': dynamoDbTableName,
+         }
+       });
+     #+END_SRC
+    
+     [[file:aws-node-rest-api-with-dynamodb-cdk/lib/aws-node-rest-api-with-dynamodb-cdk-stack.ts]]
+
+**** CDK Diff anzeigen
+     #+BEGIN_SRC sh
+       cdk diff
+     #+END_SRC
+
+**** CDK deployen
+     #+BEGIN_SRC sh
+       cdk deploy
+     #+END_SRC
+
+**** Nächster Versuch ein Todo anzulegen
+     #+BEGIN_SRC sh
+       curl -XPOST -d '{"text": "My first Todo"}' \
+     #+END_SRC
+   
+*** Lambdas Lese- und Schreibrechte auf DynamoDB geben
+**** CDKs ~grant...~ Methoden
+    - [[https://docs.aws.amazon.com/cdk/api/latest/docs/@aws-cdk_aws-dynamodb.Table.html#grantwbrreadwbrwritewbrdatagrantee][grantReadWriteData]] Methode passend für unseren Zweck
+**** DynamoDB in ein höheres Konstrukt übersetzen
+     #+BEGIN_SRC typescript
+       const table = Table.fromTableArn(this, 'HigherTable', dynamoDB.attrArn);
+     #+END_SRC
+    
+     [[file:aws-node-rest-api-with-dynamodb-cdk/lib/aws-node-rest-api-with-dynamodb-cdk-stack.ts]]
+**** Lambda Execution Role in höheres Konstrukt übersetzen
+     #+BEGIN_SRC sh
+       npm install @aws-cdk/aws-iam
+     #+END_SRC
+     
+     #+BEGIN_SRC typescript
+       const cfnRole = cfnTemplate.getResource('IamRoleLambdaExecution') as CfnRole;
+       const role = Role.fromRoleArn(this, 'HigherRole', cfnRole.attrArn);
+     #+END_SRC
+     
+     [[file:aws-node-rest-api-with-dynamodb-cdk/lib/aws-node-rest-api-with-dynamodb-cdk-stack.ts]]
+     
+**** Lamba Functions in höhere Konstrukte übersetzen
+     #+BEGIN_SRC typescript
+       const functions = cfnFunctions.map((f) => Function.fromFunctionAttributes(
+         this,
+         'HigherFunction' + f.functionName,
+         {
+           functionArn: f.attrArn,
+           role: role
+         }
+       ));
+     #+END_SRC
+
+     [[file:aws-node-rest-api-with-dynamodb-cdk/lib/aws-node-rest-api-with-dynamodb-cdk-stack.ts]]
+     
+**** Lambda Funktionen Lese- und Schreibrechte geben
+
+     #+BEGIN_SRC typescript
+       functions.forEach((f) => table.grantReadWriteData(f));
+     #+END_SRC
+    
+     [[file:aws-node-rest-api-with-dynamodb-cdk/lib/aws-node-rest-api-with-dynamodb-cdk-stack.ts]]
+
+     
+**** CDK Diff anzeigen
+     #+BEGIN_SRC sh
+       cdk diff
+     #+END_SRC
+
+**** CDK deployen
+     #+BEGIN_SRC sh
+       cdk deploy
+     #+END_SRC
+
+**** Nächster Versuch ein Todo anzulegen
+     #+BEGIN_SRC sh
+       curl -XPOST -d '{"text": "My first Todo"}' \
+     #+END_SRC
+   
