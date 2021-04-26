@@ -72,7 +72,7 @@
      }
    #+END_SRC
    
-* Fallbeispiel: Migration von Serverless zu CDK
+* Hands On: Migration von Serverless zu CDK
 ** Ausgangssituation
    - [[https://www.serverless.com/examples/aws-node-rest-api-with-dynamodb][Rest API with DynamoDB]]
      - API Gateway
@@ -107,7 +107,13 @@
     #+END_SRC
 
 *** ~CfnInclude~ instanziieren
-    - [[file:aws-node-rest-api-with-dynamodb-cdk/lib/aws-node-rest-api-with-dynamodb-cdk-stack.ts]]
+    #+BEGIN_SRC typescript
+      const cfnTemplate = new CfnInclude(this, 'template', {
+        templateFile: 'resources/template.json',
+      });
+    #+END_SRC
+    
+    [[file:aws-node-rest-api-with-dynamodb-cdk/lib/aws-node-rest-api-with-dynamodb-cdk-stack.ts]]
 
 *** Bestehendes CloudFormation Template speichern
 
@@ -117,24 +123,27 @@
     #+END_SRC
     
 *** Stackname in CDK auf bestehenden Stacknamen ändern
+    #+BEGIN_SRC typescript
+      new AwsNodeRestApiWithDynamodbCdkStack(app, 'aws-node-rest-api-with-dynamodb-dev', {});
+    #+END_SRC
     
-   [[file:aws-node-rest-api-with-dynamodb-cdk/bin/aws-node-rest-api-with-dynamodb-cdk.ts]] 
+    [[file:aws-node-rest-api-with-dynamodb-cdk/bin/aws-node-rest-api-with-dynamodb-cdk.ts]] 
     
-*** Diff anzeigen und deployen
-
-    #+BEGIN_SRC shell
-    cdk diff
+*** CDK Diff anzeigen 
+    #+BEGIN_SRC sh
+      cdk diff
     #+END_SRC
 
-    #+BEGIN_SRC shell
-    cdk deploy
+*** CDK deployen
+    #+BEGIN_SRC sh
+      cdk deploy
     #+END_SRC
-
+    
 ** Bestehende CloudFormation Resourcen erweitern
-*** CRUD Lambdas mit ~DYNAMO_TABLE~ Environment Variable ausstatten
+*** CRUD Lambdas mit ~DYNAMODB_TABLE~ Environment Variable ausstatten
 **** CDK Module für DynamoDB und Lambda installieren
      #+BEGIN_SRC sh
-     npm install @aws-cdk/aws-dynamodb @aws-cdk/aws-lambda
+       npm install @aws-cdk/aws-dynamodb @aws-cdk/aws-lambda
      #+END_SRC
      
 **** DynamoDB Table in CDK bringen und Namen extrahieren
@@ -142,13 +151,13 @@
        const cfnTable = cfnTemplate.getResource('TodosDynamoDbTable') as CfnTable;
 
        if (cfnTable.tableName == null) {
-         throw new Error("DynamoDB has no name");
+         throw new Error('DynamoDB has no name');
        }
 
        const dynamoDbTableName: string = cfnTable.tableName;
-    #+END_SRC
+     #+END_SRC
     
-    [[file:aws-node-rest-api-with-dynamodb-cdk/lib/aws-node-rest-api-with-dynamodb-cdk-stack.ts]]
+     [[file:aws-node-rest-api-with-dynamodb-cdk/lib/aws-node-rest-api-with-dynamodb-cdk-stack.ts]]
 
 **** Lambda Functions in CDK bringen und ~DYNAMODB_TABLE~ Environment Variable setzen
      #+BEGIN_SRC typescript
@@ -192,10 +201,10 @@
    
 *** Lambdas Lese- und Schreibrechte auf DynamoDB geben
 **** CDKs ~grant...~ Methoden
-    - [[https://docs.aws.amazon.com/cdk/api/latest/docs/@aws-cdk_aws-dynamodb.Table.html#grantwbrreadwbrwritewbrdatagrantee][grantReadWriteData]] Methode passend für unseren Zweck
+     - [[https://docs.aws.amazon.com/cdk/api/latest/docs/@aws-cdk_aws-dynamodb.Table.html#grantwbrreadwbrwritewbrdatagrantee][grantReadWriteData]] Methode passend für unseren Zweck
 **** DynamoDB in ein höheres Konstrukt übersetzen
      #+BEGIN_SRC typescript
-       const table = Table.fromTableArn(this, 'HigherTable', dynamoDB.attrArn);
+       const table = Table.fromTableArn(this, 'HigherTable', cfnTable.attrArn);
      #+END_SRC
     
      [[file:aws-node-rest-api-with-dynamodb-cdk/lib/aws-node-rest-api-with-dynamodb-cdk-stack.ts]]
@@ -233,7 +242,6 @@
     
      [[file:aws-node-rest-api-with-dynamodb-cdk/lib/aws-node-rest-api-with-dynamodb-cdk-stack.ts]]
 
-     
 **** CDK Diff anzeigen
      #+BEGIN_SRC sh
        cdk diff
@@ -249,3 +257,113 @@
        curl -XPOST -d '{"text": "My first Todo"}' \
      #+END_SRC
    
+** Code Updates nach Lambda deployen
+*** Änderungen am Code haben bisher keinen Effekt
+    Ändern einer Datei
+    [[file:aws-node-rest-api-with-dynamodb-serverless/todos/delete.js]] 
+
+    #+BEGIN_SRC sh
+      cdk deploy
+    #+END_SRC
+
+    #+BEGIN_SRC sh
+      curl -XDELETE \
+    #+END_SRC
+*** ~aws-s3-assets~ 
+    - Erlaubt das definieren von lokalen Dateien die zu einer CDK Applikation gehören
+    - Zuerst werden assets hochgeladen, danach Stack deployed
+    - S3 Ort wird per Parameter an Stack gegeben
+    #+BEGIN_SRC sh
+      npm install @aws-cdk/aws-s3-assets
+    #+END_SRC
+*** Code an einen zentraleren Ort verschieben
+    #+BEGIN_SRC sh
+            mv ../aws-node-rest-api-with-dynamodb-serverless/todos \
+               ../aws-node-rest-api-with-dynamodb-serverless/package* \
+               ../aws-node-rest-api-with-dynamodb-serverless/node_modules \
+      ../code/
+    #+END_SRC
+
+    #+BEGIN_SRC typescript
+      const asset = new Asset(this, 'LambdaCode', {
+        path: '../code',
+      });
+
+      cfnFunctions.forEach((f) => f.code = {
+        s3Bucket: asset.s3BucketName,
+        s3Key: asset.s3ObjectKey,
+      });
+    #+END_SRC
+
+    [[file:aws-node-rest-api-with-dynamodb-cdk/lib/aws-node-rest-api-with-dynamodb-cdk-stack.ts]]
+*** CDK Diff anzeigen
+    #+BEGIN_SRC sh
+      cdk diff
+    #+END_SRC
+
+*** CDK deployen
+    #+BEGIN_SRC sh
+      cdk deploy
+    #+END_SRC
+
+** Existente Konstrukte in CDK definieren
+*** Wir möchten die DynamoDB in CDK definieren, sie aber nicht neu erzeugen
+    #+BEGIN_SRC yaml
+        TodosDynamoDbTable:
+          Type: 'AWS::DynamoDB::Table'
+          Properties:
+            TableName: Todos
+            BillingMode: PAY_PER_REQUEST
+            AttributeDefinitions:
+              -
+                AttributeName: id
+                AttributeType: S
+                KeySchema:
+            -
+            AttributeName: id
+            KeyType: HASH
+    #+END_SRC
+*** Definieren in CDK und logische ID überschreiben
+    
+    #+BEGIN_SRC typescript
+      const table = new Table(this, 'DynamoDB', {
+        partitionKey: {
+          name: 'id',
+          type: AttributeType.STRING,
+        }
+      });
+
+      const cfnTable = table.node.defaultChild as CfnTable;
+      cfnTable.overrideLogicalId('TodosDynamoDbTable');
+
+      // const cfnTable = cfnTemplate.getResource('TodosDynamoDbTable') as CfnTable;
+      // const table = Table.fromTableArn(this, 'HigherTable', cfnTable.attrArn);
+    #+END_SRC
+*** DynamoDB in CloudFormation löschen
+    
+    [[file:aws-node-rest-api-with-dynamodb-cdk/resources/template.json]] 
+*** CDK diff
+    #+BEGIN_SRC sh
+      cdk diff
+    #+END_SRC
+    
+*** Differenzen anpassen
+    #+BEGIN_SRC typescript
+      const table = new Table(this, 'DynamoDB', {
+        tableName: 'Todos',
+        billingMode: BillingMode.PAY_PER_REQUEST,
+        partitionKey: {
+          name: 'id',
+          type: AttributeType.STRING,
+        }
+      });
+
+    #+END_SRC
+
+*** CDK diff
+    #+BEGIN_SRC sh
+      cdk diff
+    #+END_SRC
+
+    
+* Fragen
