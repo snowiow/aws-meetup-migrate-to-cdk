@@ -74,24 +74,24 @@
    
 * Hands On: Migration von Serverless zu CDK
 ** Ausgangssituation
-   - [[https://www.serverless.com/examples/aws-node-rest-api-with-dynamodb][Rest API with DynamoDB]]
-     - API Gateway
-     - 5 Lambdas (CRUD)
-   - Keine ~iamRoleStatements~ um in DynamoDB zu schreiben
-   - DynamoDB Name ist den Lambdas nicht bekannt
-   - [[file:aws-node-rest-api-with-dynamodb-serverless/serverless.yml][serverless.yaml]]
-     
 *** Serverless Projekt anlegen
     #+BEGIN_SRC shell
       cd aws-node-rest-api-with-dynamodb-serverless && \
           serverless deploy
     #+END_SRC
 
+*** Beispielprojekt
+   - [[https://www.serverless.com/examples/aws-node-rest-api-with-dynamodb][Rest API with DynamoDB]]
+     - API Gateway
+     - 5 Lambdas (CRUD)
+   - Keine ~iamRoleStatements~ um in DynamoDB zu schreiben
+   - DynamoDB Name ist den Lambdas nicht bekannt
+   - [[file:aws-node-rest-api-with-dynamodb-serverless/serverless.yml][serverless.yaml]]
 *** Call an create Schnittstelle
     #+BEGIN_SRC lang
    curl -XPOST -d '{"text": "My first Todo"}' \
     #+END_SRC
-   
+    
 ** Das bestehende Projekt mit CDK deployen
 *** Ein neues CDK Projekt anlegen
     #+BEGIN_SRC shell
@@ -108,7 +108,7 @@
 
 *** ~CfnInclude~ instanziieren
     #+BEGIN_SRC typescript
-      const cfnTemplate = new CfnInclude(this, 'template', {
+      const cfnTemplate = new CfnInclude(this, 'Template', {
         templateFile: 'resources/template.json',
       });
     #+END_SRC
@@ -209,6 +209,9 @@
     
      [[file:aws-node-rest-api-with-dynamodb-cdk/lib/aws-node-rest-api-with-dynamodb-cdk-stack.ts]]
 **** Lambda Execution Role in höheres Konstrukt übersetzen
+     - Rolle wird benötigt für ~Lambda.fromFunctionAttributes()~
+     - Ansonsten wird Lambda ohne Rolle in CDK Code inkludiert und ~grant~ Methode hat keine Wirkung
+     
      #+BEGIN_SRC sh
        npm install @aws-cdk/aws-iam
      #+END_SRC
@@ -273,15 +276,17 @@
     - Erlaubt das definieren von lokalen Dateien die zu einer CDK Applikation gehören
     - Zuerst werden assets hochgeladen, danach Stack deployed
     - S3 Ort wird per Parameter an Stack gegeben
+   
     #+BEGIN_SRC sh
       npm install @aws-cdk/aws-s3-assets
     #+END_SRC
 *** Code an einen zentraleren Ort verschieben
     #+BEGIN_SRC sh
-            mv ../aws-node-rest-api-with-dynamodb-serverless/todos \
-               ../aws-node-rest-api-with-dynamodb-serverless/package* \
-               ../aws-node-rest-api-with-dynamodb-serverless/node_modules \
-      ../code/
+      mkdir -p ../code && \
+          cp -r ../aws-node-rest-api-with-dynamodb-serverless/todos \
+             ../aws-node-rest-api-with-dynamodb-serverless/package* \
+             ../aws-node-rest-api-with-dynamodb-serverless/node_modules \
+             ../code/
     #+END_SRC
 
     #+BEGIN_SRC typescript
@@ -323,6 +328,7 @@
             AttributeName: id
             KeyType: HASH
     #+END_SRC
+    
 *** Definieren in CDK und logische ID überschreiben
     
     #+BEGIN_SRC typescript
@@ -339,6 +345,9 @@
       // const cfnTable = cfnTemplate.getResource('TodosDynamoDbTable') as CfnTable;
       // const table = Table.fromTableArn(this, 'HigherTable', cfnTable.attrArn);
     #+END_SRC
+    
+    [[file:aws-node-rest-api-with-dynamodb-cdk/lib/aws-node-rest-api-with-dynamodb-cdk-stack.ts]]
+    
 *** DynamoDB in CloudFormation löschen
     
     [[file:aws-node-rest-api-with-dynamodb-cdk/resources/template.json]] 
