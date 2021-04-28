@@ -75,8 +75,14 @@
 * Hands On: Migration von Serverless zu CDK
 ** Ausgangssituation
 *** Serverless Projekt anlegen
-    #+BEGIN_SRC shell
+    #+BEGIN_SRC sh
+      serverless install -u https://github.com/serverless/examples/tree/master/aws-node-rest-api-with-dynamodb \
+                 -n  aws-node-rest-api-with-dynamodb
+    #+END_SRC
+
+    #+BEGIN_SRC sh
       cd aws-node-rest-api-with-dynamodb-serverless && \
+          npm install && \
           serverless deploy
     #+END_SRC
 
@@ -116,7 +122,6 @@
     [[file:aws-node-rest-api-with-dynamodb-cdk/lib/aws-node-rest-api-with-dynamodb-cdk-stack.ts]]
 
 *** Bestehendes CloudFormation Template speichern
-
     #+BEGIN_SRC shell
       mkdir -p resources && \
           touch resources/template.json
@@ -201,7 +206,8 @@
    
 *** Lambdas Lese- und Schreibrechte auf DynamoDB geben
 **** CDKs ~grant...~ Methoden
-     - [[https://docs.aws.amazon.com/cdk/api/latest/docs/@aws-cdk_aws-dynamodb.Table.html#grantwbrreadwbrwritewbrdatagrantee][grantReadWriteData]] Methode passend für unseren Zweck
+     - [[https://docs.aws.amazon.com/cdk/api/latest/docs/@aws-cdk_aws-dynamodb.Table.html#grantwbrreadwbrwritewbrdatagrantee][grantReadWriteData(grantee)]] Methode passend für unseren Zweck
+     - Lambda Function ist ein grantee
 **** DynamoDB in ein höheres Konstrukt übersetzen
      #+BEGIN_SRC typescript
        const table = Table.fromTableArn(this, 'HigherTable', cfnTable.attrArn);
@@ -210,7 +216,8 @@
      [[file:aws-node-rest-api-with-dynamodb-cdk/lib/aws-node-rest-api-with-dynamodb-cdk-stack.ts]]
 **** Lambda Execution Role in höheres Konstrukt übersetzen
      - Rolle wird benötigt für ~Lambda.fromFunctionAttributes()~
-     - Ansonsten wird Lambda ohne Rolle in CDK Code inkludiert und ~grant~ Methode hat keine Wirkung
+     - Ansonsten wird Lambda ohne Rolle in CDK Projekt importiert
+     - => ~grant~ Methode hat keine Wirkung
      
      #+BEGIN_SRC sh
        npm install @aws-cdk/aws-iam
@@ -238,7 +245,6 @@
      [[file:aws-node-rest-api-with-dynamodb-cdk/lib/aws-node-rest-api-with-dynamodb-cdk-stack.ts]]
      
 **** Lambda Funktionen Lese- und Schreibrechte geben
-
      #+BEGIN_SRC typescript
        functions.forEach((f) => table.grantReadWriteData(f));
      #+END_SRC
@@ -272,7 +278,8 @@
     #+BEGIN_SRC sh
       curl -XDELETE \
     #+END_SRC
-*** ~aws-s3-assets~ 
+    
+*** [[https://docs.aws.amazon.com/cdk/api/latest/docs/aws-s3-assets-readme.html][aws-s3-assets]] Modul
     - Erlaubt das definieren von lokalen Dateien die zu einer CDK Applikation gehören
     - Zuerst werden assets hochgeladen, danach Stack deployed
     - S3 Ort wird per Parameter an Stack gegeben
@@ -280,6 +287,7 @@
     #+BEGIN_SRC sh
       npm install @aws-cdk/aws-s3-assets
     #+END_SRC
+    
 *** Code an einen zentraleren Ort verschieben
     #+BEGIN_SRC sh
       mkdir -p ../code && \
@@ -330,7 +338,6 @@
     #+END_SRC
     
 *** Definieren in CDK und logische ID überschreiben
-    
     #+BEGIN_SRC typescript
       const table = new Table(this, 'DynamoDB', {
         partitionKey: {
