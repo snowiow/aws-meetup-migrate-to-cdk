@@ -1,6 +1,12 @@
 #+title: Von Serverless / CloudFormation zu CDK migrieren
 #+author: Marcel Patzwahl
 
+* Über mich
+  #+ATTR_ORG: :width 100
+  [[file:img/me.jpg]]
+  - Seit 10 Jahren emsländischer Immigrant in Hamburg
+  - Seit knapp 2 Jahren bei MOIA im Platform-Engineering Team
+  - Neben AWS: ziemlich in Linux und speziell System Crafting vertieft
 * Was ist das CDK
   - Open Source Framework von AWS zum bauen von Infrastructure as Code (IaC)
   - Definitionen in General Purpose Programmiersprachen
@@ -44,34 +50,6 @@
    - ~getOutput(outputId)~
    - ~getParameter(parameterName)~
    - ~getRule(ruleName)~
-** Beispiel ~getResource()~
-   
-   #+BEGIN_SRC yaml
-       Resources:
-         Bucket:
-           Type: AWS::S3::Bucket
-           Properties:
-             BucketName: some-bucket-name
-   #+END_SRC
-   
-   #+BEGIN_SRC typescript
-     import * as cdk from '@aws-cdk/core';
-     import { CfnInclude } from '@aws-cdk/cloudformation-include';
-     import { CfnBucket } from '@aws-cdk/aws-s3';
-
-     export class CdkInfraStack extends cdk.Stack {
-       constructor(scope: cdk.Construct, id: string, props?: cdk.StackProps) {
-         super(scope, id, props);
-
-         const cfnTemplate = new CfnInclude(this, 'Template', {
-           templateFile: 'resources/template.yaml',
-         });
-
-         const cfnBucket = cfnTemplate.getResource('Bucket') as CfnBucket;
-       }
-     }
-   #+END_SRC
-   
 * Hands On: Migration von Serverless zu CDK
 ** Ausgangssituation
 *** Serverless Projekt anlegen
@@ -126,7 +104,8 @@
       mkdir -p resources && \
           touch resources/template.json
     #+END_SRC
-    
+
+    CloudFormation Template aus AWS UI holen
 *** Stackname in CDK auf bestehenden Stacknamen ändern
     #+BEGIN_SRC typescript
       new AwsNodeRestApiWithDynamodbCdkStack(app, 'aws-node-rest-api-with-dynamodb-dev', {});
@@ -207,6 +186,7 @@
 *** Lambdas Lese- und Schreibrechte auf DynamoDB geben
 **** CDKs ~grant...~ Methoden
      - [[https://docs.aws.amazon.com/cdk/api/latest/docs/@aws-cdk_aws-dynamodb.Table.html#grantwbrreadwbrwritewbrdatagrantee][grantReadWriteData(grantee)]] Methode passend für unseren Zweck
+     - Funktion nur an Higher Construct aufrufbar
      - Lambda Function ist ein grantee
 **** DynamoDB in ein höheres Konstrukt übersetzen
      #+BEGIN_SRC typescript
@@ -319,7 +299,7 @@
       cdk deploy
     #+END_SRC
 
-** Existente Konstrukte in CDK definieren
+** Existierende Konstrukte in CDK definieren
 *** Wir möchten die DynamoDB in CDK definieren, sie aber nicht neu erzeugen
     #+BEGIN_SRC yaml
         TodosDynamoDbTable:
@@ -373,13 +353,13 @@
           type: AttributeType.STRING,
         }
       });
-
     #+END_SRC
+    
+    [[file:aws-node-rest-api-with-dynamodb-cdk/lib/aws-node-rest-api-with-dynamodb-cdk-stack.ts]]
 
 *** CDK diff
     #+BEGIN_SRC sh
       cdk diff
     #+END_SRC
 
-    
 * Fragen
