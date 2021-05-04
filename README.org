@@ -1,55 +1,67 @@
 #+title: Von Serverless / CloudFormation zu CDK migrieren
 #+author: Marcel Patzwahl
 
-* Über mich
-  #+ATTR_ORG: :width 100
-  [[file:img/me.jpg]]
-  - Seit 10 Jahren emsländischer Immigrant in Hamburg
-  - Seit knapp 2 Jahren bei MOIA im Platform-Engineering Team
-  - Neben AWS: ziemlich in Linux und speziell System Crafting vertieft
-* Was ist das CDK
-  - Open Source Framework von AWS zum bauen von Infrastructure as Code (IaC)
-  - Definitionen in General Purpose Programmiersprachen
-  - Wird nach CloudFormation übersetzt und als Stacks deployed
-* MOIAs Weg zu CDK
+* Überblick
+  - Intro
+  - Hands On Example
+    - Serverless Projekt nach CDK migrieren
+    - Attribute von bestehenden Resourcen erweitern
+    - Neue Resourcen mit bestehenden Resourcen verbinden
+    - Lambda Code Updates erkennen und deployen
+    - OPTIONAL: Existierende Resourcen von CloudFormation nach CDK bringen ohne sie zu zerstören
+* Intro
+** Über mich
+   #+ATTR_ORG: :width 100
+   [[file:img/me.jpg]]
+   - Gebürtiger Emsländer
+   - Seit 11 Jahren in Hamburg
+   - Seit knapp 2 Jahren bei MOIA im Platform-Engineering Team
+   - Neben AWS: ziemlich in Linux, Vim/Emacs und der Shell vertieft
+
+** Was ist das CDK
+   - Open Source Framework von AWS zum bauen von Infrastructure as Code (IaC)
+   - Definitionen in General Purpose Programmiersprachen
+   - Wird nach CloudFormation übersetzt und als Stacks deployed
+
+** MOIAs Weg zu CDK
   
-  #+ATTR_ORG: :width 1000
-  [[file:img/community_day2019.jpg]]
+   #+ATTR_ORG: :width 1000
+   [[file:img/community_day2019.jpg]]
   
-* Bestehende CloudFormation Projekte nach CDK umziehen
-** Stand früher
-   - [[https://docs.aws.amazon.com/cdk/api/latest/docs/@aws-cdk_core.CfnInclude.html][CfnInclude]] Klasse in ~@aws-cdk/core~
+** Bestehende CloudFormation Projekte nach CDK umziehen
+*** Stand früher
+    - [[https://docs.aws.amazon.com/cdk/api/latest/docs/@aws-cdk_core.CfnInclude.html][CfnInclude]] Klasse in ~@aws-cdk/core~
  
-    Konnte bereits CloudFormation Templates importieren
-    Keinerlei Interaktion mit dem importierten Stack
+     Konnte bereits CloudFormation Templates importieren
+     Keinerlei Interaktion mit dem importierten Template
    
-   #+BEGIN_SRC typescript
-     import * as cdk from '@aws-cdk/core';
-     import { CfnInclude } from '@aws-cdk/core';
+    #+BEGIN_SRC typescript
+      import * as cdk from '@aws-cdk/core';
+      import { CfnInclude } from '@aws-cdk/core';
 
-     export class CdkInfraStack extends cdk.Stack {
-       constructor(scope: cdk.Construct, id: string, props?: cdk.StackProps) {
-         super(scope, id, props);
+      export class CdkInfraStack extends cdk.Stack {
+        constructor(scope: cdk.Construct, id: string, props?: cdk.StackProps) {
+          super(scope, id, props);
 
-         const cfnTemplate = new CfnInclude(this, 'Template', {
-           templateFile: 'resources/template.json',
-         });
-       }
-     }
-   #+END_SRC
+          const cfnTemplate = new CfnInclude(this, 'Template', {
+            templateFile: 'resources/template.json',
+          });
+        }
+      }
+    #+END_SRC
    
-** Stand jetzt
-   - [[https://docs.aws.amazon.com/cdk/api/latest/docs/cloudformation-include-readme.html][CfnInclude]] Klasse in ~@aws-cdk/cloudformation-include~
+*** Stand jetzt
+    - [[https://docs.aws.amazon.com/cdk/api/latest/docs/cloudformation-include-readme.html][CfnInclude]] Klasse in ~@aws-cdk/cloudformation-include~
 
-    Kann auch mit dem Stack interagieren
-   - ~getResource(logicalId)~
-   - ~getCondition(conditionName)~
-   - ~getHook(hookLogicalId)~
-   - ~getMapping(mappingName)~
-   - ~getNestedStack(logicalId)~
-   - ~getOutput(outputId)~
-   - ~getParameter(parameterName)~
-   - ~getRule(ruleName)~
+     Kann auch mit dem Template interagieren
+    - ~getResource(logicalId)~
+    - ~getCondition(conditionName)~
+    - ~getHook(hookLogicalId)~
+    - ~getMapping(mappingName)~
+    - ~getNestedStack(logicalId)~
+    - ~getOutput(outputId)~
+    - ~getParameter(parameterName)~
+    - ~getRule(ruleName)~
 * Hands On: Migration von Serverless zu CDK
 ** Ausgangssituation
 *** Serverless Projekt anlegen
@@ -71,6 +83,7 @@
    - Keine ~iamRoleStatements~ um in DynamoDB zu schreiben
    - DynamoDB Name ist den Lambdas nicht bekannt
    - [[file:aws-node-rest-api-with-dynamodb-serverless/serverless.yml][serverless.yaml]]
+
 *** Call an create Schnittstelle
     #+BEGIN_SRC lang
    curl -XPOST -d '{"text": "My first Todo"}' \
@@ -105,7 +118,7 @@
           touch resources/template.json
     #+END_SRC
 
-    CloudFormation Template aus AWS UI holen
+    CloudFormation Template aus AWS UI kopieren
 *** Stackname in CDK auf bestehenden Stacknamen ändern
     #+BEGIN_SRC typescript
       new AwsNodeRestApiWithDynamodbCdkStack(app, 'aws-node-rest-api-with-dynamodb-dev', {});
@@ -168,12 +181,11 @@
     
      [[file:aws-node-rest-api-with-dynamodb-cdk/lib/aws-node-rest-api-with-dynamodb-cdk-stack.ts]]
 
-**** CDK Diff anzeigen
+**** CDK diff & deploy
      #+BEGIN_SRC sh
        cdk diff
      #+END_SRC
 
-**** CDK deployen
      #+BEGIN_SRC sh
        cdk deploy
      #+END_SRC
@@ -188,12 +200,14 @@
      - [[https://docs.aws.amazon.com/cdk/api/latest/docs/@aws-cdk_aws-dynamodb.Table.html#grantwbrreadwbrwritewbrdatagrantee][grantReadWriteData(grantee)]] Methode passend für unseren Zweck
      - Funktion nur an Higher Construct aufrufbar
      - Lambda Function ist ein grantee
+
 **** DynamoDB in ein höheres Konstrukt übersetzen
      #+BEGIN_SRC typescript
        const table = Table.fromTableArn(this, 'HigherTable', cfnTable.attrArn);
      #+END_SRC
     
      [[file:aws-node-rest-api-with-dynamodb-cdk/lib/aws-node-rest-api-with-dynamodb-cdk-stack.ts]]
+
 **** Lambda Execution Role in höheres Konstrukt übersetzen
      - Rolle wird benötigt für ~Lambda.fromFunctionAttributes()~
      - Ansonsten wird Lambda ohne Rolle in CDK Projekt importiert
@@ -231,12 +245,11 @@
     
      [[file:aws-node-rest-api-with-dynamodb-cdk/lib/aws-node-rest-api-with-dynamodb-cdk-stack.ts]]
 
-**** CDK Diff anzeigen
+**** CDK diff & deploy
      #+BEGIN_SRC sh
        cdk diff
      #+END_SRC
 
-**** CDK deployen
      #+BEGIN_SRC sh
        cdk deploy
      #+END_SRC
@@ -248,7 +261,8 @@
    
 ** Code Updates nach Lambda deployen
 *** Änderungen am Code haben bisher keinen Effekt
-    Ändern einer Datei
+    Ändern der Rückgabemeldung
+
     [[file:aws-node-rest-api-with-dynamodb-serverless/todos/delete.js]] 
 
     #+BEGIN_SRC sh
@@ -289,18 +303,20 @@
     #+END_SRC
 
     [[file:aws-node-rest-api-with-dynamodb-cdk/lib/aws-node-rest-api-with-dynamodb-cdk-stack.ts]]
-*** CDK Diff anzeigen
+
+*** CDK diff & deploy
     #+BEGIN_SRC sh
       cdk diff
     #+END_SRC
 
-*** CDK deployen
     #+BEGIN_SRC sh
       cdk deploy
     #+END_SRC
 
-** Existierende Konstrukte in CDK definieren
+** OPTIONAL: Existierende Konstrukte in CDK definieren
 *** Wir möchten die DynamoDB in CDK definieren, sie aber nicht neu erzeugen
+
+    Die DynamoDB Table in CloudFormation
     #+BEGIN_SRC yaml
         TodosDynamoDbTable:
           Type: 'AWS::DynamoDB::Table'
@@ -338,6 +354,7 @@
 *** DynamoDB in CloudFormation löschen
     
     [[file:aws-node-rest-api-with-dynamodb-cdk/resources/template.json]] 
+
 *** CDK diff
     #+BEGIN_SRC sh
       cdk diff
@@ -357,9 +374,12 @@
     
     [[file:aws-node-rest-api-with-dynamodb-cdk/lib/aws-node-rest-api-with-dynamodb-cdk-stack.ts]]
 
-*** CDK diff
+*** CDK diff & deploy
     #+BEGIN_SRC sh
       cdk diff
     #+END_SRC
 
-* Fragen
+* Fragen & Resourcen
+  - Alle Folien zum nachschauen als README: [[https://github.com/snowiow/aws-meetup-migrate-to-cdk]] 
+  - Der Content zum nachlesen als Blog Post: [[https://snow-dev.com/posts/migrate-from-serverless-to-cdk.html]]
+  - Bei später aufkommenden Fragen gerne melden: [[mailto:marcel.patzwahl@posteo.de][marcel.patzwahl@posteo.de]]
