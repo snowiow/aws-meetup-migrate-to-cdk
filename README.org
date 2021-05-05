@@ -2,14 +2,14 @@
 #+author: Marcel Patzwahl
 
 * Überblick
-  - Intro
+  - Intros
   - Hands On Example
     - Serverless Projekt nach CDK migrieren
     - Attribute von bestehenden Resourcen erweitern
     - Neue Resourcen mit bestehenden Resourcen verbinden
     - Lambda Code Updates erkennen und deployen
     - OPTIONAL: Existierende Resourcen von CloudFormation nach CDK bringen ohne sie zu zerstören
-* Intro
+* Intros
 ** Über mich
    #+ATTR_ORG: :width 100
    [[file:img/me.jpg]]
@@ -77,10 +77,12 @@
     #+END_SRC
 
 *** Beispielprojekt
+   - Applikation zum Erstellen von Todos
    - [[https://www.serverless.com/examples/aws-node-rest-api-with-dynamodb][Rest API with DynamoDB]]
      - API Gateway
      - 5 Lambdas (CRUD)
-   - Keine ~iamRoleStatements~ um in DynamoDB zu schreiben
+     - DynamoDB
+   - Lambdas haben keine Berechtigung auf die DynamoDB zuzugreifen
    - DynamoDB Name ist den Lambdas nicht bekannt
    - [[file:aws-node-rest-api-with-dynamodb-serverless/serverless.yml][serverless.yaml]]
 
@@ -199,7 +201,7 @@
 **** CDKs ~grant...~ Methoden
      - [[https://docs.aws.amazon.com/cdk/api/latest/docs/@aws-cdk_aws-dynamodb.Table.html#grantwbrreadwbrwritewbrdatagrantee][grantReadWriteData(grantee)]] Methode passend für unseren Zweck
      - Funktion nur an Higher Construct aufrufbar
-     - Lambda Function ist ein grantee
+     - Higher Lambda Function ist ein grantee
 
 **** DynamoDB in ein höheres Konstrukt übersetzen
      #+BEGIN_SRC typescript
@@ -345,7 +347,6 @@
       const cfnTable = table.node.defaultChild as CfnTable;
       cfnTable.overrideLogicalId('TodosDynamoDbTable');
 
-      // const cfnTable = cfnTemplate.getResource('TodosDynamoDbTable') as CfnTable;
       // const table = Table.fromTableArn(this, 'HigherTable', cfnTable.attrArn);
     #+END_SRC
     
